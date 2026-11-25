@@ -1,33 +1,44 @@
+
 import express from "express";
 import { GoogleGenAI } from "@google/genai";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 app.use(express.json({ limit: "1mb" }));
-app.use((_req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+
+// الصفحة الرئيسية
+app.get("/", (_req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
 });
 
+// فحص السيرفر
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, app: "M3 AI", geminiConfigured: Boolean(process.env.GEMINI_API_KEY) });
+  res.json({
+    ok: true,
+    app: "M3 AI",
+    geminiConfigured: Boolean(process.env.GEMINI_API_KEY)
+  });
 });
 
+// المحادثة مع الذكاء الاصطناعي
 app.post("/api/chat", async (req, res) => {
   try {
     const apiKey = process.env.GEMINI_API_KEY;
+
     if (!apiKey) {
       return res.status(503).json({
-        error: "لم يتم إعداد Gemini بعد. أضف GEMINI_API_KEY في Environment على Render."
+        error: "لم يتم إعداد Gemini API Key"
       });
     }
 
     const messages = req.body?.messages;
-    if (!Array.isArray(messages) || messages.length === 0 || messages.length > 30) {
-      return res.status(400).json({ error: "الرسائل المرسلة غير صالحة." });
+
+    if (!Array.isArray(messages) || !messages.length || messages.length > 30) {
+      return res.status(400).json({ error: "الرسائل غير صالحة" });
     }
 
     const contents = messages
@@ -38,32 +49,29 @@ app.post("/api/chat", async (req, res) => {
       }));
 
     if (!contents.length || contents[contents.length - 1].role !== "user") {
-      return res.status(400).json({ error: "أرسل رسالة صحيحة أولاً." });
+      return res.status(400).json({ error: "أرسل رسالة صحيحة" });
     }
 
     const ai = new GoogleGenAI({ apiKey });
+
     const result = await ai.models.generateContent({
       model: process.env.GEMINI_MODEL || "gemini-3.8-flash",
       contents,
       config: {
-        systemInstruction: "أنت M3 AI، مساعد ذكي مفيد وواضح. أجب بلغة المستخدم، واستخدم العربية عند التحدث بالعربية. كن دقيقاً، وإذا لم تعرف شيئاً فقل ذلك بوضوح."
+        systemInstruction: "أنت M3 AI، مساعد ذكي مفيد وواضح. أجب بلغة المستخدم."
       }
     });
 
-    res.json({ reply: result.text || "لم يصل رد نصي من Gemini." });
+    res.json({ reply: result.text || "لم يصل رد نصي." });
+
   } catch (error) {
-    console.error("Gemini request failed:", error);
-    const status = error?.status === 429 ? 429 : 500;
-    res.status(status).json({
-      error: status === 429
-        ? "تم بلوغ حد الاستخدام مؤقتاً. حاول لاحقاً."
-        : "تعذر الاتصال بـ Gemini. تحقق من مفتاح API وإعدادات النموذج."
+    console.error("Gemini error:", error);
+    res.status(500).json({
+      error: "تعذر الاتصال بـ Gemini"
     });
   }
 });
 
-app.use((req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+app.listen(PORT, () => {
+  console.log(`M3 AI running on port ${PORT}`);
 });
-
-app.listen(PORT, () => console.log(`M3 AI running on port ${PORT}`));
